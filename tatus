@@ -1,0 +1,59 @@
+[33mcommit 0758295556fb2bb41c0f2fb9dc36a31d658f003b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Wed Mar 12 03:31:31 2025 +0800
+
+    初始化提交：AI图像生成器应用程序
+
+[33mcommit 35c377ed845f724dc9c3d3c5e14971be55271000[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 06:21:11 2025 +0800
+
+    添加AI图像生成功能，更新UI界面和README
+
+[33mcommit c10759ddf9860249c387dcf798e0a674b8ee2f86[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 06:07:51 2025 +0800
+
+    添加AI图像生成功能，更新UI界面和README
+
+[33mcommit 1fb723c7ffdd9c88571c9a478c02658303e86553[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 05:40:29 2025 +0800
+
+    添加AI图像生成功能，更新UI界面和README
+
+[33mcommit 63b87a38f3bec761bebe16ac03fa431c4e8ace33[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 05:10:16 2025 +0800
+
+    添加AI图像生成功能，更新UI界面和README
+
+[33mcommit 96283839c79c154ebaf5ec2f2e600b4c31c83817[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 04:50:55 2025 +0800
+
+    添加AI图像生成功能，更新UI界面和README
+
+[33mcommit 96c1bbc3ef3e527e3899458f61cae9cc1cbf1a01[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 04:23:25 2025 +0800
+
+    生图很差换解题
+
+[33mcommit fa07bf76c318b424e8be234122f4ed9390041c7b[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 03:54:05 2025 +0800
+
+    添加高级卡通图像生成功能：支持12种卡通风格和8种视觉效果
+
+[33mcommit 3dec7588ab8fe72bc75627e026020196ef7d64ea[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 03:28:26 2025 +0800
+
+    完善食物热量数据库：增加200多种食物、添加营养素信息和新功能
+
+[33mcommit 40dd3a4ca498c7eee7ddc003616cf45e78908b6a[m[33m ([m[1;32mmaster[m[33m)[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Fri Mar 7 02:19:16 2025 +0800
+
+    初始提交

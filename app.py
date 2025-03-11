@@ -203,7 +203,7 @@ def render_workflow_tab(workflow_id, workflow):
                     # 生成图片
                     output_path = generate_image_runninghub(
                         workflow_id=str(workflow_id),  # 确保 workflow_id 是字符串
-                        workflow_config=workflow.get('parameters', {}),  # 获取 parameters 字段
+                        workflow_config=workflow.get('parameters', {}).get('nodeInfoList', {}),  # 直接获取 nodeInfoList 字段
                         prompt=final_prompt,
                         negative_prompt=negative_prompt,
                         seed=seed if seed != -1 else None,

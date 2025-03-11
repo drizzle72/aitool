@@ -164,7 +164,7 @@ def get_node_id_by_field(workflow_config: dict, field_name: str) -> Optional[str
         Optional[str]: 节点ID，如果未找到则返回 None
     """
     try:
-        node_info_list = workflow_config.get('parameters', {}).get('nodeInfoList', [])
+        node_info_list = workflow_config.get('nodeInfoList', [])
         for node_info in node_info_list:
             if node_info.get('fieldName') == field_name:
                 return node_info.get('nodeId')
