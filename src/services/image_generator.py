@@ -164,10 +164,19 @@ def get_node_id_by_field(workflow_config: dict, field_name: str) -> Optional[str
         Optional[str]: 节点ID，如果未找到则返回 None
     """
     try:
-        node_info_list = workflow_config.get('nodeInfoList', [])
-        for node_info in node_info_list:
-            if node_info.get('fieldName') == field_name:
-                return node_info.get('nodeId')
+        # 确保 workflow_config 是字典类型
+        if not isinstance(workflow_config, dict):
+            logger.warning(f"workflow_config 不是字典类型: {type(workflow_config)}")
+            return None
+            
+        # 获取 nodeInfoList
+        node_info_list = workflow_config.get('parameters', {}).get('nodeInfoList', [])
+        if isinstance(node_info_list, list):
+            # 遍历节点列表查找匹配的字段
+            for node_info in node_info_list:
+                if isinstance(node_info, dict) and node_info.get('fieldName') == field_name:
+                    node_id = node_info.get('nodeId')
+                    return str(node_id) if node_id is not None else None
         return None
     except Exception as e:
         logger.warning(f"获取节点 ID 失败 (字段: {field_name}): {str(e)}")
@@ -255,35 +264,50 @@ def generate_image_runninghub(
                 logger.error(f"处理参考图片失败: {str(e)}")
                 raise e
         
-        # 获取提示词节点 ID
-        text_node_id = get_node_id_by_field(workflow_config, 'text')
-        if not text_node_id:
-            logger.warning("未找到提示词节点配置，使用默认节点ID: 6")
-            text_node_id = "6"
+        # 获取完整的节点列表
+        original_node_list = workflow_config.get('parameters', {}).get('nodeInfoList', [])
+        logger.debug(f"原始节点列表: {original_node_list}")
         
-        # 添加提示词节点信息
-        node_info_list.append({
-            "nodeId": text_node_id,  # 保持为字符串
-            "fieldName": "text",
-            "fieldValue": prompt
-        })
-        
-        # 获取种子节点 ID
-        seed_node_id = get_node_id_by_field(workflow_config, 'seed')
-        if not seed_node_id:
-            logger.warning("未找到种子节点配置，使用默认节点ID: 3")
-            seed_node_id = "3"
-        
-        # 如果有种子值，添加种子节点信息
-        if seed is None:
-            seed = random.randint(0, 2**32-1)
-            logger.debug(f"生成的随机种子: {seed}")
-        
-        node_info_list.append({
-            "nodeId": seed_node_id,  # 保持为字符串
-            "fieldName": "seed",
-            "fieldValue": seed  # 数值类型
-        })
+        # 处理每个节点
+        for node_info in original_node_list:
+            if not isinstance(node_info, dict):
+                continue
+                
+            node_id = node_info.get('nodeId')
+            field_name = node_info.get('fieldName')
+            
+            if not node_id or not field_name:
+                continue
+                
+            # 如果是图片节点且已添加，则跳过
+            if field_name == 'image' and workflow_type == WorkflowType.IMAGE_TO_IMAGE and reference_image_path:
+                continue
+                
+            # 处理提示词节点
+            if field_name == 'text':
+                node_info_list.append({
+                    "nodeId": str(node_id),
+                    "fieldName": field_name,
+                    "fieldValue": prompt
+                })
+            # 处理种子节点
+            elif field_name == 'seed':
+                if seed is None:
+                    seed = random.randint(0, 2**32-1)
+                    logger.debug(f"生成的随机种子: {seed}")
+                    
+                node_info_list.append({
+                    "nodeId": str(node_id),
+                    "fieldName": field_name,
+                    "fieldValue": seed
+                })
+            # 保留其他节点的原始值
+            else:
+                node_info_list.append({
+                    "nodeId": str(node_id),
+                    "fieldName": field_name,
+                    "fieldValue": node_info.get('fieldValue')
+                })
         
         # 准备请求数据
         data = {
@@ -296,6 +320,7 @@ def generate_image_runninghub(
             data["negative_prompt"] = negative_prompt
             
         logger.debug(f"请求数据: {json.dumps(data, ensure_ascii=False, indent=2)}")
+        logger.debug(f"工作流配置: {json.dumps(workflow_config, ensure_ascii=False, indent=2)}")
         
         # 创建会话并配置
         session = requests.Session()

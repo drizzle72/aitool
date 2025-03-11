@@ -121,12 +121,13 @@ def validate_image_file(file):
     if file.size > max_size:
         raise ValueError(f"文件过大: {file.size / 1024 / 1024:.2f}MB。最大允许: 10MB")
 
-def display_image(image_path):
+def display_image(image_path, key_suffix="default"):
     """
     在Streamlit中显示图片，并添加下载按钮
     
     参数:
         image_path: str, 图片文件路径
+        key_suffix: str, 用于创建唯一按钮key的后缀
     """
     try:
         # 显示图片
@@ -139,7 +140,8 @@ def display_image(image_path):
                 label="下载图片",
                 data=file,
                 file_name=os.path.basename(image_path),
-                mime="image/png"
+                mime="image/png",
+                key=f"download_btn_{key_suffix}"
             )
     except Exception as e:
         logger.error(f"显示图片时出错: {str(e)}")
@@ -156,6 +158,10 @@ def get_workflow_type(workflow):
 
 def render_workflow_tab(workflow_id, workflow):
     workflow_type = get_workflow_type(workflow)
+    
+    # 创建状态变量，用于存储生成的图片路径
+    if 'generated_image_path' not in st.session_state:
+        st.session_state.generated_image_path = None
     
     with st.form(key=f"form_{workflow_id}"):
         if workflow_type == WorkflowType.IMAGE_TO_IMAGE:
@@ -203,7 +209,7 @@ def render_workflow_tab(workflow_id, workflow):
                     # 生成图片
                     output_path = generate_image_runninghub(
                         workflow_id=str(workflow_id),  # 确保 workflow_id 是字符串
-                        workflow_config=workflow.get('parameters', {}).get('nodeInfoList', {}),  # 直接获取 nodeInfoList 字段
+                        workflow_config=workflow,  # 传递完整的工作流配置
                         prompt=final_prompt,
                         negative_prompt=negative_prompt,
                         seed=seed if seed != -1 else None,
@@ -216,23 +222,28 @@ def render_workflow_tab(workflow_id, workflow):
                         os.remove(reference_image_path)
                     
                     # 显示生成的图片
-                    if output_path and os.path.exists(output_path):
-                        st.success("图片生成成功！")
-                        st.image(output_path, caption="生成的图片")
-                        
-                        # 添加下载按钮
-                        with open(output_path, "rb") as file:
-                            btn = st.download_button(
-                                label="下载图片",
-                                data=file,
-                                file_name=os.path.basename(output_path),
-                                mime="image/png"
-                            )
+                    if isinstance(output_path, dict) and 'image_path' in output_path:
+                        image_path = output_path['image_path']
+                        if os.path.exists(image_path):
+                            st.session_state.generated_image_path = image_path
+                            st.success("图片生成成功！")
+                            st.image(image_path, caption="生成的图片")
                     else:
                         st.error("图片生成失败，请重试")
                         
             except Exception as e:
                 st.error(f"发生错误: {str(e)}")
+    
+    # 表单外部添加下载按钮
+    if st.session_state.generated_image_path and os.path.exists(st.session_state.generated_image_path):
+        with open(st.session_state.generated_image_path, "rb") as file:
+            st.download_button(
+                label="下载图片",
+                data=file,
+                file_name=os.path.basename(st.session_state.generated_image_path),
+                mime="image/png",
+                key=f"download_btn_{workflow_id}"
+            )
 
 def render_recognition_tab():
     """渲染图像识别选项卡"""
