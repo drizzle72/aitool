@@ -1,770 +1,365 @@
 """
-通义千问视觉语言模型(Qwen-VL) 智能识别助手
-
-主应用程序，使用Streamlit构建Web界面
+Streamlit 应用程序 - AI 图像生成器和识别助手
 """
 
 import os
-import io
-import time
-from PIL import Image
-import streamlit as st
-from dotenv import load_dotenv
-import textwrap
 import json
-
-# 导入自定义模块
-from qwen_api import QwenAPI, analyze_description, TASK_TYPES, parse_qwen_response
-from food_calories import get_food_calories, get_similar_foods
-from product_search import generate_purchase_links, is_likely_product
-from image_generator import ImageGenerator, get_available_styles, get_quality_options, enhance_prompt
-
-# 加载环境变量
-load_dotenv()
-
-# 设置页面配置
-st.set_page_config(
-    page_title="通义千问视觉智能助手",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
+import streamlit as st
+import random
+from src.services.image_generator import (
+    generate_image_runninghub,
+    WorkflowType,
+    validate_api_key,
+    validate_workflow_id,
+    validate_prompt
 )
+from qwen_api import QwenAPI, TASK_TYPES
+import logging
+from PIL import Image
+from io import BytesIO
+import tempfile
 
-# 使用CSS美化界面
-st.markdown("""
-<style>
-    .main-title {
-        font-size: 2.5rem !important;
-        color: #1E88E5;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .subtitle {
-        font-size: 1.2rem !important;
-        color: #424242;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .task-header {
-        font-size: 1.5rem !important;
-        color: #1976D2;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-    }
-    .stButton>button {
-        background-color: #1976D2;
-        color: white;
-        border-radius: 5px;
-        padding: 0.5rem 1rem;
-        font-size: 1rem;
-    }
-    .result-box {
-        background-color: #f5f5f5;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-        border-left: 5px solid #1976D2;
-    }
-    .essay-content {
-        font-size: 1.1rem;
-        line-height: 1.8;
-        text-indent: 2em;
-        white-space: pre-wrap;
-    }
-    .problem-solution {
-        font-size: 1.1rem;
-        line-height: 1.8;
-        white-space: pre-wrap;
-    }
-    .food-section {
-        background-color: #E3F2FD;
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 0.5rem;
-    }
-    .product-section {
-        background-color: #E8F5E9;
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 0.5rem;
-    }
-    .creative-section {
-        background-color: #FFF3E0;
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 0.5rem;
-    }
-    .generated-image {
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-        text-align: center;
-        max-width: 100%;
-    }
-    .style-option {
-        margin-right: 10px;
-        margin-bottom: 10px;
-        display: inline-block;
-    }
-    .info-box {
-        background-color: #E8F5E9;
-        padding: 1rem;
-        border-radius: 5px;
-        margin-bottom: 1rem;
-    }
-    .warning-box {
-        background-color: #FFF3E0;
-        padding: 1rem;
-        border-radius: 5px;
-        margin-bottom: 1rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def save_text_as_file(text, filename):
-    """保存文本为文件"""
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(text)
+# 默认提示词配置
+DEFAULT_PROMPTS = {
+    "text_to_image": [
+        "一个美丽的年轻女孩，穿着白色连衣裙，站在樱花树下，阳光温柔地洒在她身上，整体画面唯美梦幻，8k超清，电影感",
+        "一只可爱的小猫咪，在阳光明媚的窗台上打盹，周围有绿色植物，温馨自然的氛围，细节丰富，高清摄影",
+        "未来科技感的城市夜景，霓虹灯光照亮天际线，飞行器穿梭其中，赛博朋克风格，4k超清渲染",
+        "童话般的森林场景，萤火虫点缀其中，蘑菇小屋若隐若现，魔幻梦幻风格，细节精美",
+        "中国传统水墨画风格的山水画，远山含黛，近水清澈，意境优美，艺术感强",
+    ],
+    "image_to_image": [
+        "保持原图构图，增加梦幻感，提高细节，添加柔和光效，8k超清",
+        "将原图转换为油画风格，增加艺术感，保持主体特征，提升画面质感",
+        "为原图添加赛博朋克风格，增加科技感和未来感，保持主要元素",
+        "将原图转换为水彩画风格，增加艺术气息，保持画面和谐",
+        "为原图添加动漫风格，提升可爱度，保持主要特征",
+    ]
+}
 
-def download_button(text, filename, button_text):
-    """创建下载按钮"""
-    # 转换text为字符串（如果是字典则进行JSON转换）
-    if isinstance(text, dict):
-        text_str = json.dumps(text, ensure_ascii=False, indent=2)
-    else:
-        text_str = str(text)
-        
-    with open("temp.txt", "w", encoding="utf-8") as f:
-        f.write(text_str)
-    with open("temp.txt", "r", encoding="utf-8") as f:
-        st.download_button(
-            label=button_text,
-            data=f,
-            file_name=filename,
-            mime="text/plain"
-        )
-    os.remove("temp.txt")
-
-def handle_api_response(response_data, default_message="无法解析响应"):
+def get_random_prompt(workflow_type):
     """
-    处理API响应数据，提取其中的文本内容
+    根据工作流类型获取随机默认提示词
     
     参数:
-        response_data (str or dict): API返回的响应数据
-        default_message (str): 当无法解析响应时返回的默认消息
+        workflow_type: WorkflowType, 工作流类型
         
     返回:
-        str: 提取出的文本内容
+        str: 随机选择的提示词
+    """
+    if workflow_type == WorkflowType.IMAGE_TO_IMAGE:
+        return random.choice(DEFAULT_PROMPTS["image_to_image"])
+    else:
+        return random.choice(DEFAULT_PROMPTS["text_to_image"])
+
+def load_workflows():
+    """
+    加载工作流配置
+    
+    返回:
+        dict: 工作流配置字典
     """
     try:
-        # 使用parse_qwen_response函数解析响应
-        result = parse_qwen_response(response_data)
-        
-        # 如果结果以"无法解析"或"错误"开头，记录原始响应并返回默认消息
-        if result.startswith("无法解析") or result.startswith("错误"):
-            print(f"API响应解析失败: {result}")
-            print(f"原始响应: {json.dumps(response_data, ensure_ascii=False)[:1000]}...")
-            return default_message
-            
-        return result
+        with open("workflows.json", "r", encoding="utf-8") as f:
+            workflows = json.load(f)
+            print("加载的工作流配置:", workflows)  # 添加日志
+            return workflows
     except Exception as e:
-        print(f"处理API响应时出错: {str(e)}")
-        print(f"原始响应: {str(response_data)[:1000]}...")
-        return default_message
+        print(f"加载工作流配置出错: {str(e)}")  # 添加错误日志
+        return {}
 
-def main():
-    # 标题和介绍
-    st.markdown('<h1 class="main-title">通义千问视觉智能助手</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">基于通义千问视觉语言模型的多功能AI助手，支持图像分析、作文生成、解题辅助和AI绘画</p>', unsafe_allow_html=True)
+def save_uploaded_file(uploaded_file):
+    """
+    保存上传的文件到临时目录
     
-    # 创建侧边栏选择功能区
-    with st.sidebar:
-        st.markdown("## 功能选择")
+    参数:
+        uploaded_file: Streamlit上传的文件对象
         
-        # 创建两个选项卡：图像分析和图像生成
-        tab_analysis, tab_generation = st.tabs(["📸 图像分析", "🎨 图像生成"])
+    返回:
+        str: 临时文件的路径
+    """
+    try:
+        # 创建临时目录（如果不存在）
+        temp_dir = "temp"
+        os.makedirs(temp_dir, exist_ok=True)
         
-        with tab_analysis:
-            # 图像分析任务选择
-            task_options = {
-                "识别": "📋 图像识别与描述",
-                "作文": "📝 看图写作文",
-                "解题": "🧮 看图解题",
-                "故事": "📚 生成故事",
-                "诗歌": "🎭 创作诗歌",
-                "科普": "🔬 科普解释"
-            }
-            
-            selected_tasks = []
-            st.write("### 选择任务")
-            for task_key, task_label in task_options.items():
-                if st.checkbox(task_label, key=f"task_{task_key}"):
-                    selected_tasks.append(task_key)
-                    
-            # 自定义提示选项
-            st.markdown("### 自定义提示 (可选)")
-            custom_prompt = {}
-            for task in selected_tasks:
-                custom_prompt[task] = st.text_area(
-                    f"{task_options[task]}的自定义提示", 
-                    key=f"prompt_{task}",
-                    placeholder=f"输入自定义的{task_options[task]}提示..."
-                )
-                
-            st.markdown("### 上传图片")
-            uploaded_file = st.file_uploader("选择一张图片...", type=["jpg", "jpeg", "png"])
-            
-            # 将分析按钮设为隐藏状态，仅作为后备选项
-            auto_analyze = st.checkbox("自动分析", value=True, key="auto_analyze", 
-                                       help="上传图片后自动开始分析，无需点击按钮")
-            
-            # 添加一个简短的提示
-            if len(selected_tasks) == 0:
-                st.info("请至少选择一项分析任务")
-                
-            if auto_analyze and uploaded_file is not None and len(selected_tasks) > 0:
-                st.success("✅ 已自动开始分析图像...")
-            
-            if not auto_analyze:
-                analyze_button = st.button("开始分析", key="analyze_button", 
-                                         disabled=len(selected_tasks) == 0 or uploaded_file is None)
-            elif uploaded_file is not None and len(selected_tasks) > 0:
-                # 如果启用了自动分析，且有上传文件和选择了任务，自动设置分析按钮为已点击状态
-                st.session_state["analyze_button"] = True
-                
-        with tab_generation:
-            # 图像生成选项
-            st.write("### AI绘画")
-            
-            # 生成模式选择
-            generation_mode = st.radio(
-                "选择生成模式",
-                options=["文本生成图像", "图像变体生成"],
-                key="generation_mode"
-            )
-            
-            if generation_mode == "文本生成图像":
-                # 文本提示输入
-                text_prompt = st.text_area(
-                    "输入图像描述", 
-                    placeholder="描述你想要生成的图像，例如：'一只可爱的小猫在阳光下玩耍'",
-                    key="text_prompt"
-                )
-                
-                # 选择图像风格
-                styles = get_available_styles()
-                style_names = list(styles.keys())
-                
-                st.write("### 选择图像风格")
-                style_col1, style_col2, style_col3 = st.columns(3)
-                
-                with style_col1:
-                    selected_style = st.radio(
-                        "基础风格",
-                        options=style_names[:5],
-                        key="style_basic"
-                    )
-                    
-                with style_col2:
-                    selected_style2 = st.radio(
-                        "艺术风格",
-                        options=style_names[5:10],
-                        key="style_art"
-                    )
-                    
-                with style_col3:
-                    selected_style3 = st.radio(
-                        "特殊风格",
-                        options=style_names[10:],
-                        key="style_special"
-                    )
-                
-                # 确定最终选择的风格
-                final_style = selected_style
-                if st.session_state.get("last_used_style_section") == "art":
-                    final_style = selected_style2
-                elif st.session_state.get("last_used_style_section") == "special":
-                    final_style = selected_style3
-                    
-                # 更新最后使用的风格部分
-                # 使用按钮或检查当前选择的值来确定最后使用的风格部分
-                st_basic = st.button("使用此基础风格", key="use_basic_style")
-                st_art = st.button("使用此艺术风格", key="use_art_style")
-                st_special = st.button("使用此特殊风格", key="use_special_style")
-                
-                if st_basic:
-                    st.session_state["last_used_style_section"] = "basic"
-                    final_style = selected_style
-                elif st_art:
-                    st.session_state["last_used_style_section"] = "art"
-                    final_style = selected_style2
-                elif st_special:
-                    st.session_state["last_used_style_section"] = "special"
-                    final_style = selected_style3
-                
-                # 质量选择
-                st.write("### 图像质量")
-                quality_options = get_quality_options()
-                selected_quality = st.select_slider(
-                    "选择质量",
-                    options=list(quality_options.keys()),
-                    value="标准"
-                )
-                
-                # 高级选项
-                with st.expander("高级选项"):
-                    negative_prompt = st.text_area(
-                        "负面提示词", 
-                        placeholder="输入你不希望在图像中出现的元素",
-                        key="negative_prompt"
-                    )
-                    
-                    use_random_seed = st.checkbox("使用随机种子", value=True, key="use_random_seed")
-                    if not use_random_seed:
-                        seed = st.number_input("种子值", min_value=1, max_value=2147483647, value=42, key="seed")
-                    else:
-                        seed = None
-                        
-                    use_mock = st.checkbox("使用模拟模式 (不调用外部API)", value=False, key="use_mock")
-                
-                # 生成按钮
-                generate_text_button = st.button("生成图像", key="generate_text_button", disabled=not text_prompt)
-                
-            else:  # 图像变体生成
-                st.write("### 上传原始图像")
-                variation_file = st.file_uploader("选择一张图片作为基础...", type=["jpg", "jpeg", "png"], key="variation_file")
-                
-                # 变化强度
-                variation_strength = st.slider("变化强度", min_value=0.1, max_value=1.0, value=0.7, step=0.1)
-                
-                use_mock_variation = st.checkbox("使用模拟模式 (不调用外部API)", value=False, key="use_mock_variation")
-                
-                # 生成按钮
-                generate_variation_button = st.button("生成变体", key="generate_variation_button", disabled=variation_file is None)
-            
-    # 主界面
-    if uploaded_file is not None:
-        # 处理上传的图片
-        image = Image.open(uploaded_file)
+        # 生成临时文件路径
+        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+        temp_path = os.path.join(temp_dir, f"{uploaded_file.name}")
         
-        # 显示上传的图片
-        st.image(image, caption="上传的图片", use_container_width=True)
-        
-        # 保存图片到临时文件，使用唯一的文件名避免冲突
-        try:
-            timestamp = int(time.time())
-            random_suffix = os.urandom(4).hex()
-            temp_image_path = f"temp_image_{timestamp}_{random_suffix}.jpg"
+        # 保存文件
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
             
-            # 确保临时目录存在
-            temp_dir = os.path.dirname(temp_image_path)
-            if temp_dir and not os.path.exists(temp_dir):
-                os.makedirs(temp_dir, exist_ok=True)
-                
-            # 保存图像
-            image.save(temp_image_path)
-        except Exception as e:
-            st.error(f"保存临时图像时出错: {str(e)}")
-            st.warning("将尝试使用内存中的图像进行处理...")
-            temp_image_path = None
-        
-        # 分析按钮被点击且有任务被选择
-        if st.session_state.get("analyze_button", False) and selected_tasks:
-            # 生成唯一的处理标识符
-            if uploaded_file is not None:
-                # 生成一个基于文件内容和选定任务的唯一标识符
-                file_content = uploaded_file.getvalue()
-                image_hash = hash(file_content)
-                tasks_hash = hash(tuple(sorted(selected_tasks)))
-                process_id = f"{image_hash}_{tasks_hash}"
-                
-                # 检查是否已经处理过这张图像与这些任务的组合
-                if "processed_images" not in st.session_state:
-                    st.session_state["processed_images"] = {}
-                
-                # 如果这个组合已经被处理过，跳过处理
-                if process_id in st.session_state["processed_images"]:
-                    # 直接显示之前的结果
-                    results = st.session_state["processed_images"][process_id]
-                else:
-                    # 进行新的处理
-                    with st.spinner("正在分析图像..."):
-                        # 创建API实例
-                        api = QwenAPI()
-                        
-                        # 创建一个标志来表示已经进行了处理，而不是直接修改按钮状态
-                        analysis_processed_key = "analysis_processed_" + str(int(time.time()))
-                        st.session_state[analysis_processed_key] = True
-                        
-                        # 存储所有结果
-                        results = {}
-                        
-                        # 对每个选定的任务进行处理
-                        for task in selected_tasks:
-                            try:
-                                if temp_image_path is None:
-                                    # 如果临时文件保存失败，则使用内存中的图像
-                                    image_bytes = io.BytesIO()
-                                    image.save(image_bytes, format="JPEG")
-                                    image_bytes.seek(0)
-                                    
-                                    # 使用自定义提示
-                                    if custom_prompt.get(task):
-                                        task_result = api.process_image_request(
-                                            image_data=image_bytes.getvalue(),
-                                            task_type=task,
-                                            custom_prompt=custom_prompt[task]
-                                        )
-                                    else:
-                                        # 使用默认提示
-                                        task_result = api.process_image_request(
-                                            image_data=image_bytes.getvalue(),
-                                            task_type=task
-                                        )
-                                else:
-                                    # 使用临时文件路径
-                                    if custom_prompt.get(task):
-                                        # 使用自定义提示
-                                        task_result = api.process_image_request(
-                                            image_path=temp_image_path,
-                                            task_type=task,
-                                            custom_prompt=custom_prompt[task]
-                                        )
-                                    else:
-                                        # 使用默认提示
-                                        task_result = api.process_image_request(
-                                            image_path=temp_image_path,
-                                            task_type=task
-                                        )
-                            except Exception as e:
-                                st.error(f"处理任务 '{task}' 时出错: {str(e)}")
-                                task_result = f"处理失败: {str(e)}"
-                            
-                            # 解析API响应以获取文本内容
-                            if isinstance(task_result, dict) or isinstance(task_result, str):
-                                task_result = handle_api_response(task_result, f"处理{task}任务失败")
-                            
-                            # 存储结果
-                            results[task] = task_result
-                        
-                        # 保存处理结果以备后用
-                        st.session_state["processed_images"][process_id] = results
-                
-                # 显示结果
-                st.markdown('<h2 class="task-header">分析结果</h2>', unsafe_allow_html=True)
-                
-                # 首先总是显示识别结果（如果有）
-                if "识别" in results:
-                    with st.expander("📋 图像识别结果", expanded=True):
-                        st.markdown(f'<div class="result-box">{results["识别"]}</div>', unsafe_allow_html=True)
-                        
-                        # 下载按钮
-                        download_button(results["识别"], "图像识别结果.txt", "下载识别结果")
-                        
-                        # 分析识别结果
-                        food_items, products = analyze_description(results["识别"])
-                        
-                        # 显示食物信息（如果有）
-                        if food_items:
-                            st.markdown('<div class="food-section">', unsafe_allow_html=True)
-                            st.markdown("#### 🍎 食物热量信息")
-                            
-                            for food in food_items:
-                                food_info = get_food_calories(food)
-                                
-                                # 检查返回值是否为字典类型
-                                if isinstance(food_info, dict):
-                                    calories = food_info.get("热量")
-                                    description = food_info.get("描述", "")
-                                    
-                                    if calories:
-                                        st.markdown(f"**{food}**: {calories} 千卡/100克")
-                                        
-                                        # 如果有更详细的描述，显示它
-                                        if description and description != f"{food}平均每100克含有{calories}千卡热量":
-                                            st.caption(description)
-                                            
-                                        # 如果有营养素信息，显示它
-                                        if "营养素" in food_info:
-                                            with st.expander(f"查看「{food}」的营养素信息"):
-                                                for nutrient, value in food_info["营养素"].items():
-                                                    st.markdown(f"**{nutrient}**: {value}克")
-                                        
-                                        # 显示类似食物
-                                        similar_foods = get_similar_foods(food)
-                                        if similar_foods:
-                                            with st.expander(f"查看类似于「{food}」的食物"):
-                                                if isinstance(similar_foods, dict):
-                                                    for similar_food, similar_calories in similar_foods.items():
-                                                        st.markdown(f"**{similar_food}**: {similar_calories} 千卡")
-                                                elif isinstance(similar_foods, list):
-                                                    for similar_food in similar_foods:
-                                                        st.markdown(f"**{similar_food}**")
-                                    else:
-                                        st.markdown(f"**{food}**: 未找到热量信息")
-                                else:
-                                    # 兼容旧版本返回格式
-                                    calories, unit = food_info if isinstance(food_info, tuple) else (food_info, "100克")
-                                    if calories:
-                                        st.markdown(f"**{food}**: {calories} 千卡/{unit}")
-                                    else:
-                                        st.markdown(f"**{food}**: 未找到热量信息")
-                            
-                            st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # 显示商品信息（如果有）
-                        if products:
-                            st.markdown('<div class="product-section">', unsafe_allow_html=True)
-                            st.markdown("#### 🛒 商品购买链接")
-                            
-                            for product in products:
-                                links = generate_purchase_links(product)
-                                st.markdown(f"**{product}**")
-                                for platform, link in links.items():
-                                    st.markdown(f"[{platform}]({link})")
-                            
-                            st.markdown('</div>', unsafe_allow_html=True)
-                
-                # 显示作文结果（如果有）
-                if "作文" in results:
-                    with st.expander("📝 看图写作文", expanded=True):
-                        st.markdown(f'<div class="result-box"><div class="essay-content">{results["作文"]}</div></div>', unsafe_allow_html=True)
-                        
-                        # 下载按钮
-                        download_button(results["作文"], "看图作文.txt", "下载作文")
-                
-                # 显示解题结果（如果有）
-                if "解题" in results:
-                    with st.expander("🧮 看图解题", expanded=True):
-                        st.markdown(f'<div class="result-box"><div class="problem-solution">{results["解题"]}</div></div>', unsafe_allow_html=True)
-                        
-                        # 下载按钮
-                        download_button(results["解题"], "题目解答.txt", "下载解答")
-                
-                # 显示创意内容（故事、诗歌、科普）
-                for task in ["故事", "诗歌", "科普"]:
-                    if task in results:
-                        task_titles = {
-                            "故事": "📚 生成故事",
-                            "诗歌": "🎭 创作诗歌",
-                            "科普": "🔬 科普解释"
-                        }
-                        
-                        with st.expander(task_titles[task], expanded=True):
-                            st.markdown(f'<div class="result-box creative-section"><div class="essay-content">{results[task]}</div></div>', unsafe_allow_html=True)
-                            
-                            # 下载按钮
-                            download_button(results[task], f"{task_titles[task].split()[1]}.txt", f"下载{task}")
-                
-                # 如果这是新处理的结果，完成后删除临时文件
-                if process_id not in st.session_state.get("processed_images", {}) or process_id == st.session_state.get("last_processed_id"):
-                    if temp_image_path and os.path.exists(temp_image_path):
-                        try:
-                            os.remove(temp_image_path)
-                            print(f"临时文件 {temp_image_path} 已删除")
-                        except Exception as e:
-                            print(f"删除临时文件出错: {str(e)}")
-                
-                # 记录最后处理的ID
-                st.session_state["last_processed_id"] = process_id
+        logger.info(f"文件已保存到: {temp_path}")
+        return temp_path
+    except Exception as e:
+        logger.error(f"保存上传文件时出错: {str(e)}")
+        raise e
 
-    # 处理图像生成
-    # 文本到图像生成
-    if st.session_state.get("generation_mode") == "文本生成图像" and st.session_state.get("generate_text_button", False):
-        if st.session_state.get("text_prompt"):
-            with st.spinner("正在生成图像..."):
-                # 创建一个标志来表示已经进行了处理，而不是直接修改按钮状态
-                text_processed_key = "text_processed_" + str(int(time.time()))
-                st.session_state[text_processed_key] = True
+def validate_image_file(file):
+    """
+    验证上传的图片文件
+    
+    参数:
+        file: Streamlit上传的文件对象
+        
+    异常:
+        ValueError: 当文件格式不支持或大小超限时
+    """
+    # 检查文件类型
+    allowed_types = {"image/png", "image/jpeg", "image/jpg"}
+    if file.type not in allowed_types:
+        raise ValueError(f"不支持的文件类型: {file.type}。支持的类型: PNG, JPEG, JPG")
+    
+    # 检查文件大小（限制为10MB）
+    max_size = 10 * 1024 * 1024  # 10MB in bytes
+    if file.size > max_size:
+        raise ValueError(f"文件过大: {file.size / 1024 / 1024:.2f}MB。最大允许: 10MB")
+
+def display_image(image_path):
+    """
+    在Streamlit中显示图片，并添加下载按钮
+    
+    参数:
+        image_path: str, 图片文件路径
+    """
+    try:
+        # 显示图片
+        image = Image.open(image_path)
+        st.image(image, caption="生成的图片", use_column_width=True)
+        
+        # 添加下载按钮
+        with open(image_path, "rb") as file:
+            btn = st.download_button(
+                label="下载图片",
+                data=file,
+                file_name=os.path.basename(image_path),
+                mime="image/png"
+            )
+    except Exception as e:
+        logger.error(f"显示图片时出错: {str(e)}")
+        st.error(f"显示图片时出错: {str(e)}")
+
+def get_workflow_type(workflow):
+    workflow_type = workflow.get('type', '')
+    if workflow_type == 'image_to_image':
+        return WorkflowType.IMAGE_TO_IMAGE
+    elif workflow_type == 'text_to_image':
+        return WorkflowType.TEXT_TO_IMAGE
+    else:
+        return WorkflowType.TEXT_TO_IMAGE
+
+def render_workflow_tab(workflow_id, workflow):
+    workflow_type = get_workflow_type(workflow)
+    
+    with st.form(key=f"form_{workflow_id}"):
+        if workflow_type == WorkflowType.IMAGE_TO_IMAGE:
+            uploaded_file = st.file_uploader("上传参考图片", type=['png', 'jpg', 'jpeg'], key=f"uploader_{workflow_id}")
+            if uploaded_file:
+                st.image(uploaded_file, caption="上传的图片")
+        
+        # 获取默认提示词
+        default_prompt = get_random_prompt(workflow_type)
+        
+        # 添加提示词输入框，使用默认提示词作为占位符
+        prompt = st.text_area("提示词", 
+                            placeholder=f"示例提示词：{default_prompt}",
+                            help="如果不输入提示词，将使用随机的优质提示词",
+                            key=f"prompt_{workflow_id}")
+        
+        negative_prompt = st.text_area("反向提示词（可选）", key=f"negative_prompt_{workflow_id}")
+        seed = st.number_input("随机种子", value=-1, key=f"seed_{workflow_id}")
+        
+        # 显示当前使用的提示词
+        if not prompt:
+            st.info(f"将使用默认提示词：{default_prompt}")
+        
+        submitted = st.form_submit_button("生成图片")
+        
+        if submitted:
+            if workflow_type == WorkflowType.IMAGE_TO_IMAGE and not uploaded_file:
+                st.error("请先上传参考图片")
+                return
                 
-                # 获取参数
-                prompt = st.session_state.get("text_prompt")
-                
-                # 根据最后使用的按钮决定使用哪个风格
-                if "last_used_style_section" not in st.session_state:
-                    # 默认使用基础风格
-                    style = selected_style
-                elif st.session_state["last_used_style_section"] == "art":
-                    style = selected_style2
-                elif st.session_state["last_used_style_section"] == "special":
-                    style = selected_style3
-                else:
-                    style = selected_style
-                
-                quality = st.session_state.get("selected_quality", "标准")
-                negative_prompt = st.session_state.get("negative_prompt")
-                use_mock = st.session_state.get("use_mock", False)
-                
-                # 使用随机种子或指定种子
-                if st.session_state.get("use_random_seed", True):
-                    seed = None
-                else:
-                    seed = st.session_state.get("seed", 42)
-                
-                # 创建生成器实例
-                generator = ImageGenerator()
-                
-                try:
-                    # 生成图像
-                    generated_image_path = generator.generate_from_text(
-                        prompt=prompt,
-                        style=style,
-                        quality=quality,
+            try:
+                with st.spinner("正在生成图片..."):
+                    # 如果是图生图，保存上传的图片
+                    reference_image_path = None
+                    if workflow_type == WorkflowType.IMAGE_TO_IMAGE and uploaded_file:
+                        temp_dir = "temp"
+                        os.makedirs(temp_dir, exist_ok=True)
+                        reference_image_path = os.path.join(temp_dir, uploaded_file.name)
+                        with open(reference_image_path, "wb") as f:
+                            f.write(uploaded_file.getvalue())
+                    
+                    # 使用用户输入的提示词或默认提示词
+                    final_prompt = prompt if prompt else default_prompt
+                    
+                    # 生成图片
+                    output_path = generate_image_runninghub(
+                        workflow_id=str(workflow_id),  # 确保 workflow_id 是字符串
+                        workflow_config=workflow.get('parameters', {}),  # 获取 parameters 字段
+                        prompt=final_prompt,
                         negative_prompt=negative_prompt,
-                        seed=seed,
-                        use_mock=use_mock
+                        seed=seed if seed != -1 else None,
+                        workflow_type=workflow_type,
+                        reference_image_path=reference_image_path
                     )
                     
-                    # 显示生成的图像
-                    st.markdown('<h2 class="task-header">生成结果</h2>', unsafe_allow_html=True)
+                    # 清理临时文件
+                    if reference_image_path and os.path.exists(reference_image_path):
+                        os.remove(reference_image_path)
                     
-                    if os.path.exists(generated_image_path):
-                        # 打开生成的图像
-                        generated_image = Image.open(generated_image_path)
+                    # 显示生成的图片
+                    if output_path and os.path.exists(output_path):
+                        st.success("图片生成成功！")
+                        st.image(output_path, caption="生成的图片")
                         
-                        # 显示图像
-                        st.markdown('<div class="generated-image">', unsafe_allow_html=True)
-                        st.image(generated_image, caption=f"AI生成图像 - {style}风格", use_container_width=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # 创建下载按钮
-                        with open(generated_image_path, "rb") as img_file:
-                            st.download_button(
-                                label="下载图像",
-                                data=img_file,
-                                file_name=os.path.basename(generated_image_path),
+                        # 添加下载按钮
+                        with open(output_path, "rb") as file:
+                            btn = st.download_button(
+                                label="下载图片",
+                                data=file,
+                                file_name=os.path.basename(output_path),
                                 mime="image/png"
                             )
-                            
-                        # 显示使用的提示词
-                        with st.expander("查看提示词"):
-                            enhanced_prompt = enhance_prompt(prompt, style)
-                            st.write("**增强后的提示词:**")
-                            st.write(enhanced_prompt)
-                            if negative_prompt:
-                                st.write("**负面提示词:**")
-                                st.write(negative_prompt)
                     else:
-                        st.error("图像生成失败，请重试。")
-                
-                except Exception as e:
-                    st.error(f"生成过程中发生错误: {str(e)}")
-    
-    # 处理图像变体生成
-    if st.session_state.get("generation_mode") == "图像变体生成" and st.session_state.get("generate_variation_button", False):
-        if st.session_state.get("variation_file"):
-            with st.spinner("正在生成图像变体..."):
-                # 创建一个标志来表示已经进行了处理，而不是直接修改按钮状态
-                variation_processed_key = "variation_processed_" + str(int(time.time()))
-                st.session_state[variation_processed_key] = True
-                
-                # 获取上传的图像
-                variation_file = st.session_state.get("variation_file")
-                variation_image = Image.open(variation_file)
-                
-                # 保存到临时文件
-                temp_variation_path = "temp_variation_image.jpg"
-                variation_image.save(temp_variation_path)
-                
-                # 获取参数
-                variation_strength = st.session_state.get("variation_strength", 0.7)
-                use_mock = st.session_state.get("use_mock_variation", False)
-                
-                # 创建生成器实例
-                generator = ImageGenerator()
-                
-                try:
-                    # 生成变体
-                    variation_image_path = generator.create_image_variation(
-                        image_path=temp_variation_path,
-                        variation_strength=variation_strength,
-                        use_mock=use_mock
-                    )
-                    
-                    # 显示结果
-                    st.markdown('<h2 class="task-header">变体结果</h2>', unsafe_allow_html=True)
-                    
-                    # 显示原图和变体的对比
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**原始图像**")
-                        st.image(variation_image, use_container_width=True)
+                        st.error("图片生成失败，请重试")
                         
-                    with col2:
-                        if os.path.exists(variation_image_path):
-                            st.markdown("**变体图像**")
-                            
-                            # 打开生成的变体图像
-                            result_image = Image.open(variation_image_path)
-                            st.image(result_image, use_container_width=True)
-                            
-                            # 创建下载按钮
-                            with open(variation_image_path, "rb") as img_file:
-                                st.download_button(
-                                    label="下载变体图像",
-                                    data=img_file,
-                                    file_name=os.path.basename(variation_image_path),
-                                    mime="image/png"
-                                )
+            except Exception as e:
+                st.error(f"发生错误: {str(e)}")
+
+def render_recognition_tab():
+    """渲染图像识别选项卡"""
+    st.header("图像识别")
+    
+    # 初始化千问API客户端
+    try:
+        qwen = QwenAPI()
+    except ValueError as e:
+        st.error(str(e))
+        return
+    
+    # 上传图片
+    uploaded_file = st.file_uploader("上传图片进行识别", type=['png', 'jpg', 'jpeg'])
+    
+    if uploaded_file:
+        try:
+            # 验证上传的图片
+            validate_image_file(uploaded_file)
+            
+            # 显示上传的图片
+            st.image(uploaded_file, caption="上传的图片", use_column_width=True)
+            
+            # 保存上传的图片
+            image_path = save_uploaded_file(uploaded_file)
+            
+            # 选择任务类型
+            task_type = st.selectbox(
+                "选择识别任务类型",
+                ["通用识别", "人脸识别", "文字识别", "物体检测"]
+            )
+            
+            # 自定义提示词
+            use_custom_prompt = st.checkbox("使用自定义提示词")
+            if use_custom_prompt:
+                custom_prompt = st.text_area("自定义提示词", help="请输入您的自定义提示词")
+            else:
+                custom_prompt = None
+            
+            # 分析按钮
+            if st.button("开始分析", key="analyze_image"):
+                with st.spinner("正在分析图片..."):
+                    try:
+                        # 根据任务类型调用不同的处理函数
+                        if task_type == "识别":
+                            result = qwen.get_image_description(image_path=image_path)
+                        elif task_type == "作文":
+                            result = qwen.generate_essay(image_path=image_path, custom_prompt=custom_prompt)
+                        elif task_type == "解题":
+                            result = qwen.solve_problem(image_path=image_path, custom_prompt=custom_prompt)
                         else:
-                            st.error("变体生成失败，请重试。")
-                    
-                    # 完成后删除临时文件
-                    if os.path.exists(temp_variation_path):
-                        os.remove(temp_variation_path)
+                            result = qwen.generate_creative_content(
+                                image_path=image_path,
+                                content_type=task_type,
+                                custom_prompt=custom_prompt
+                            )
+                        
+                        # 显示结果
+                        if "error" in str(result):
+                            st.error(result)
+                        else:
+                            st.success("分析完成！")
+                            st.write(result)
+                            
+                    except Exception as e:
+                        logger.exception("分析图片时出错")
+                        st.error(f"分析图片时出错: {str(e)}")
                 
-                except Exception as e:
-                    st.error(f"生成过程中发生错误: {str(e)}")
-                    if os.path.exists(temp_variation_path):
-                        os.remove(temp_variation_path)
-    
-    # 提供使用说明
-    with st.expander("使用说明"):
-        st.markdown("""
-        ## 功能介绍
-        
-        ### 图像分析功能
-        - **图像识别与描述**: 识别并详细描述图像内容，包括食物热量和商品信息
-        - **看图写作文**: 根据图像内容自动生成不少于300字的作文
-        - **看图解题**: 识别图像中的题目并给出详细解答
-        - **创意内容生成**: 可生成与图像相关的故事、诗歌或科普解释
-        
-        ### AI绘画功能
-        - **文本生成图像**: 根据文字描述生成图像，支持15种艺术风格
-        - **图像变体生成**: 基于上传的图像创建不同风格的变体
-        - **多样风格**: 从写实、油画、水彩到二次元、赛博朋克等多种风格
-        - **质量选择**: 支持标准、高清、超清多种分辨率
-        
-        ## 使用技巧
-        1. 在进行图像分析时，可以同时选择多个任务一次性完成
-        2. 生成图像时，尝试添加详细的描述和风格，会得到更好的效果
-        3. 使用自定义提示来引导AI生成更符合期望的内容
-        4. 高级选项中的负面提示词可以帮助排除不需要的元素
-        """)
-    
-    # 添加API密钥设置指南
-    with st.expander("API设置"):
-        st.markdown("""
-        ### API密钥设置
-        
-        本应用使用两个API：
-        1. **通义千问API**: 用于图像识别、作文生成和解题
-        2. **Stability AI API**: 用于AI图像生成
-        
-        #### 设置方法：
-        1. 创建一个`.env`文件在应用根目录
-        2. 添加以下内容：
-           ```
-           QWEN_API_KEY=你的通义千问API密钥
-           STABILITY_API_KEY=你的Stability AI API密钥
-           ```
-        3. 如果没有Stability API密钥，应用将使用模拟模式生成图像
-        
-        #### 获取API密钥：
-        - 通义千问API密钥: [阿里云通义平台](https://dashscope.aliyun.com/)
-        - Stability AI API密钥: [Stability AI官网](https://stability.ai/)
-        """)
+            # 清理临时文件
+            try:
+                os.remove(image_path)
+                logger.info(f"已删除临时文件: {image_path}")
+            except Exception as e:
+                logger.warning(f"删除临时文件时出错: {str(e)}")
                 
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            logger.exception("处理上传文件时出错")
+            st.error(f"处理上传文件时出错: {str(e)}")
+    
+    else:
+        st.info("请上传一张图片")
+
+def main():
+    """主函数"""
+    try:
+        # 设置页面标题
+        st.set_page_config(page_title="AI 图像生成器和识别助手", layout="wide")
+        st.title("AI 图像生成器和识别助手")
+        
+        # 加载工作流配置
+        workflows = load_workflows()
+        if not workflows:
+            st.error("加载工作流配置失败")
+            return
+        
+        # 创建选项卡列表
+        tab_names = []
+        tab_workflows = []
+        
+        # 添加所有工作流
+        for workflow_id, workflow in workflows.items():
+            # 根据工作流ID判断类型
+            workflow_type = get_workflow_type(workflow)
+            
+            tab_names.append(workflow['name'])
+            tab_workflows.append((workflow_id, workflow, workflow_type))
+        
+        # 添加图像识别选项卡
+        tab_names.append("图像识别")
+        
+        # 创建选项卡
+        tabs = st.tabs(tab_names)
+        
+        # 渲染工作流选项卡
+        for i, (workflow_id, workflow, workflow_type) in enumerate(tab_workflows):
+            with tabs[i]:
+                render_workflow_tab(workflow_id, workflow)
+        
+        # 渲染图像识别选项卡
+        with tabs[-1]:
+            render_recognition_tab()
+                
+    except Exception as e:
+        logger.exception("应用程序运行时出错")
+        st.error(f"应用程序运行时出错: {str(e)}")
+
 if __name__ == "__main__":
     main() 

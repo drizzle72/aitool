@@ -1,0 +1,52 @@
+{
+  "1899506367328337921": {
+    "name": "Flux文生图",
+    "description": "",
+    "model": "",
+    "type": "text_to_image",
+    "parameters": {
+      "nodeInfoList": [
+        {
+          "nodeId": 6,
+          "fieldName": "text",
+          "fieldValue": "DreamWork 3D Style, a cute panda holding a bamboo in hands at sunset, highly detailed, ultra-high resolutions, 32K UHD, best quality, masterpiece, "
+        },
+        {
+          "nodeId": 3,
+          "fieldName": "seed",
+          "fieldValue": 5
+        }
+      ]
+    }
+  },
+  "1894278785376890882": {
+    "name": "人物一致性6宫格小红书风格",
+    "description": "",
+    "model": "",
+    "type": "text_to_image",
+    "parameters": {
+      "nodeInfoList": [
+        {
+          "nodeId": 6,
+          "fieldName": "text",
+          "fieldValue": "This FOUR-PANEL picture shows a young woman taking a walk by the seaside; [TOP-LEFT] She stood by the seaside, smiling and looking at the camera. [TOP-RIGHT] She made a gesture of empathy and looked at the camera. [BOTTOM-LEFT] She crossed her hands and looked at the camera. [BOTTOM-RIGHT] She put on her glasses and stood sideways, looking at the camera."
+        }
+      ]
+    }
+  },
+  "1899518843264389121": {
+    "name": "梦幻油画风格形象",
+    "description": "将参考图片转换为新的图片",
+    "model": "",
+    "type": "image_to_image",
+    "parameters": {
+      "nodeInfoList": [
+        {
+          "nodeId": 40,
+          "fieldName": "image",
+          "fieldValue": ""
+        }
+      ]
+    }
+  }
+}

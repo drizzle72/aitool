@@ -22,49 +22,82 @@ load_dotenv()
 GENERATED_IMAGES_DIR = "generated_images"
 os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
 
-# 图像生成API配置
+# API配置
 STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")  # Stability AI API密钥
 STABILITY_API_BASE = "https://api.stability.ai/v1/generation"
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")  # 通义千问API密钥
+DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+RUNNINGHUB_API_KEY = os.getenv("RUNNINGHUB_API_KEY")  # RunningHub API密钥
+RUNNINGHUB_API_BASE = "https://www.runninghub.cn"  # RunningHub API基础URL
+RUNNINGHUB_WORKFLOW_ID = "1889944455695441922"  # RunningHub 工作流ID
+
+# 翻译API选项
+TRANSLATION_APIS = {
+    "baidu": "百度翻译",
+    "dashscope": "通义千问"
+}
 
 # 创建图像风格列表
 IMAGE_STYLES = {
-    "写实": "写实风格，高清细节，自然光效",
-    "油画": "油画风格，明显的笔触，丰富的色彩和质感",
-    "水彩": "水彩画风格，柔和的色彩过渡，轻盈通透的效果",
-    "插画": "插画风格，简洁线条，鲜明色彩，平面化设计",
-    "二次元": "日本动漫风格，大眼睛，精致的线条，鲜艳的色彩",
-    "像素艺术": "复古像素游戏风格，方块化的图像元素",
-    "赛博朋克": "赛博朋克风格，未来感，霓虹灯效果，高科技与低生活的对比",
-    "奇幻": "奇幻风格，魔法元素，超自然景观和生物",
-    "哥特": "哥特风格，黑暗氛围，尖顶建筑，华丽装饰",
-    "印象派": "印象派风格，强调光和色彩的表现，笔触明显且色彩鲜艳",
-    "极简主义": "极简主义风格，简洁的线条和形状，有限的色彩",
-    "复古": "复古风格，怀旧色调，老式摄影效果",
-    "蒸汽朋克": "蒸汽朋克风格，维多利亚时代美学与蒸汽动力科技的结合",
-    "波普艺术": "波普艺术风格，明亮饱和的色彩，大众流行文化元素",
-    "超现实主义": "超现实主义风格，梦幻与现实的混合，不符合常理的场景"
+    "写实": {"name": "写实风格，高清细节，自然光效", "preset": "photographic"},
+    "油画": {"name": "油画风格，明显的笔触，丰富的色彩和质感", "preset": "digital-art"},
+    "水彩": {"name": "水彩画风格，柔和的色彩过渡，轻盈通透的效果", "preset": "analog-film"},
+    "插画": {"name": "插画风格，简洁线条，鲜明色彩，平面化设计", "preset": "comic-book"},
+    "二次元": {"name": "日本动漫风格，大眼睛，精致的线条，鲜艳的色彩", "preset": "anime"},
+    "像素艺术": {"name": "复古像素游戏风格，方块化的图像元素", "preset": "pixel-art"},
+    "赛博朋克": {"name": "赛博朋克风格，未来感，霓虹灯效果，高科技与低生活的对比", "preset": "neon-punk"},
+    "奇幻": {"name": "奇幻风格，魔法元素，超自然景观和生物", "preset": "fantasy-art"},
+    "哥特": {"name": "哥特风格，黑暗氛围，尖顶建筑，华丽装饰", "preset": "digital-art"},
+    "印象派": {"name": "印象派风格，强调光和色彩的表现，笔触明显且色彩鲜艳", "preset": "analog-film"},
+    "极简主义": {"name": "极简主义风格，简洁的线条和形状，有限的色彩", "preset": "line-art"},
+    "复古": {"name": "复古风格，怀旧色调，老式摄影效果", "preset": "analog-film"},
+    "蒸汽朋克": {"name": "蒸汽朋克风格，维多利亚时代美学与蒸汽动力科技的结合", "preset": "digital-art"},
+    "波普艺术": {"name": "波普艺术风格，明亮饱和的色彩，大众流行文化元素", "preset": "digital-art"},
+    "超现实主义": {"name": "超现实主义风格，梦幻与现实的混合，不符合常理的场景", "preset": "fantasy-art"},
+    "动漫": {"name": "动漫风格，清新可爱的动画效果", "preset": "anime"},
+    "3D": {"name": "3D渲染风格，逼真的立体效果", "preset": "3d-render"},
+    "素描": {"name": "素描风格，黑白线条勾勒", "preset": "sketch"},
+    "水墨": {"name": "中国水墨画风格，意境优美", "preset": "ink"},
+    "霓虹": {"name": "霓虹风格，明亮的发光效果", "preset": "neon"}
 }
 
 # 图像质量选项
 IMAGE_QUALITY = {
-    "标准": {"width": 512, "height": 512, "steps": 30},
-    "高清": {"width": 768, "height": 768, "steps": 40},
-    "超清": {"width": 1024, "height": 1024, "steps": 50}
+    "标准": {"width": 1024, "height": 1024, "steps": 30},
+    "高清": {"width": 1152, "height": 896, "steps": 40},
+    "超清": {"width": 1536, "height": 640, "steps": 50}
 }
 
 class ImageGenerator:
     """图像生成类"""
     
-    def __init__(self, api_key=None):
+    def __init__(self, api_key=None, baidu_trans_appid=None, baidu_trans_key=None, 
+                 dashscope_api_key=None, runninghub_api_key=None, translation_api="baidu"):
         """
         初始化图像生成器
         
         参数:
-            api_key (str, optional): API密钥，如不提供则使用环境变量
+            api_key (str, optional): Stability API密钥
+            baidu_trans_appid (str, optional): 百度翻译API的APPID
+            baidu_trans_key (str, optional): 百度翻译API的密钥
+            dashscope_api_key (str, optional): 通义千问API密钥
+            runninghub_api_key (str, optional): RunningHub API密钥
+            translation_api (str): 使用的翻译API
         """
         self.stability_api_key = api_key or STABILITY_API_KEY
-        if not self.stability_api_key:
-            print("警告: 未提供Stability API密钥，将使用模拟生成模式")
+        self.baidu_trans_appid = baidu_trans_appid or os.environ.get("BAIDU_TRANS_APPID")
+        self.baidu_trans_key = baidu_trans_key or os.environ.get("BAIDU_TRANS_KEY")
+        self.dashscope_api_key = dashscope_api_key or DASHSCOPE_API_KEY
+        self.runninghub_api_key = runninghub_api_key or RUNNINGHUB_API_KEY
+        self.translation_api = translation_api if translation_api in TRANSLATION_APIS else "baidu"
+        
+        if not self.stability_api_key and not self.runninghub_api_key:
+            print("警告: 未提供任何API密钥，将使用模拟生成模式")
+        
+        if self.translation_api == "baidu" and (not self.baidu_trans_appid or not self.baidu_trans_key):
+            print("警告: 未提供百度翻译API密钥，将使用模拟翻译模式")
+        elif self.translation_api == "dashscope" and not self.dashscope_api_key:
+            print("警告: 未提供通义千问API密钥，将使用模拟翻译模式")
             
     def generate_from_text(self, prompt, style=None, quality="标准", negative_prompt=None, seed=None, use_mock=False):
         """
@@ -87,13 +120,13 @@ class ImageGenerator:
             
         # 如果指定了风格，将风格描述添加到提示词
         if style and style in IMAGE_STYLES:
-            enhanced_prompt = f"{prompt}，{IMAGE_STYLES[style]}"
+            enhanced_prompt = f"{prompt}，{IMAGE_STYLES[style]['name']}"
         else:
             enhanced_prompt = prompt
             
         # 中文提示词转换为英文(实际项目中应调用翻译API)
         # 这里我们简单模拟这个过程，实际应用中可以使用百度、谷歌等翻译API
-        english_prompt = self._simulate_translation(enhanced_prompt)
+        english_prompt = self._translate_text(enhanced_prompt)
         
         # 获取质量参数
         quality_params = IMAGE_QUALITY.get(quality, IMAGE_QUALITY["标准"])
@@ -107,7 +140,55 @@ class ImageGenerator:
             return self._mock_generate_image(prompt, style, quality_params, seed)
         else:
             try:
-                return self._call_stability_api(english_prompt, negative_prompt, quality_params, seed)
+                # 准备API调用参数
+                payload = {
+                    "text_prompts": [
+                        {
+                            "text": english_prompt,
+                            "weight": 1.0
+                        }
+                    ],
+                    "cfg_scale": 7.0,
+                    "height": quality_params["height"],
+                    "width": quality_params["width"],
+                    "samples": 1,
+                    "steps": quality_params["steps"],
+                    "seed": seed
+                }
+                
+                # 添加负面提示词
+                if negative_prompt:
+                    payload["text_prompts"].append({
+                        "text": negative_prompt,
+                        "weight": -1.0
+                    })
+                
+                # 添加风格预设
+                if style and style in IMAGE_STYLES:
+                    payload["style_preset"] = IMAGE_STYLES[style]["preset"]
+                
+                # 调用API
+                endpoint = "stable-diffusion-xl-1024-v1-0/text-to-image"
+                headers = {
+                    "Accept": "image/png",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.stability_api_key}"
+                }
+                
+                image_data = self._call_stability_api(endpoint=endpoint, payload=payload, headers=headers)
+                
+                if image_data:
+                    # 保存图像
+                    timestamp = int(time.time())
+                    output_path = os.path.join(GENERATED_IMAGES_DIR, f"gen_{timestamp}_{seed}.png")
+                    
+                    with open(output_path, "wb") as f:
+                        f.write(image_data)
+                        
+                    return output_path
+                else:
+                    return self._mock_generate_image(prompt, style, quality_params, seed)
+                    
             except Exception as e:
                 print(f"API调用失败，切换到模拟模式: {e}")
                 return self._mock_generate_image(prompt, style, quality_params, seed)
@@ -135,76 +216,92 @@ class ImageGenerator:
                 print(f"API调用失败，切换到模拟模式: {e}")
                 return self._mock_image_variation(image_path, variation_strength)
     
-    def _call_stability_api(self, prompt, negative_prompt, quality_params, seed):
+    def _call_stability_api(self, endpoint, payload, headers=None):
         """
-        调用Stability AI API生成图像
+        调用Stability AI的API
         
         参数:
-            prompt (str): 提示词
-            negative_prompt (str): 负面提示词
-            quality_params (dict): 质量参数
-            seed (int): 随机种子
+            endpoint (str): API端点
+            payload (dict): 请求参数
+            headers (dict, optional): 请求头
             
         返回:
-            str: 生成的图像文件路径
+            bytes: 生成的图像数据
         """
-        # 准备API调用
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Authorization": f"Bearer {self.stability_api_key}"
-        }
-        
-        payload = {
-            "text_prompts": [
-                {
-                    "text": prompt,
-                    "weight": 1.0
+        if not self.stability_api_key:
+            print("API调用失败，切换到模拟模式: 未提供API密钥")
+            return None
+            
+        try:
+            # 设置默认请求头
+            if headers is None:
+                headers = {
+                    "Accept": "image/png",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.stability_api_key}"
                 }
-            ],
-            "cfg_scale": 7.0,
-            "height": quality_params["height"],
-            "width": quality_params["width"],
-            "samples": 1,
-            "steps": quality_params["steps"],
-            "seed": seed
-        }
-        
-        # 添加负面提示词（如果有）
-        if negative_prompt:
-            payload["text_prompts"].append(
-                {
-                    "text": negative_prompt,
-                    "weight": -1.0
-                }
+            
+            # 添加安全过滤
+            if "text_prompts" in payload:
+                for prompt in payload["text_prompts"]:
+                    prompt["text"] = self._sanitize_prompt(prompt["text"])
+            
+            # 发送请求
+            response = requests.post(
+                f"{STABILITY_API_BASE}/{endpoint}",
+                headers=headers,
+                json=payload,
+                timeout=30
             )
             
-        # 调用API
-        response = requests.post(
-            f"{STABILITY_API_BASE}/text-to-image",
-            headers=headers,
-            json=payload
-        )
+            # 检查响应状态
+            if response.status_code == 200:
+                return response.content
+            elif response.status_code == 400:
+                error_data = response.json()
+                if "message" in error_data:
+                    print(f"API调用失败，切换到模拟模式: API调用失败: {response.status_code} - {error_data}")
+                    if "style_preset" in error_data.get("message", ""):
+                        # 如果是风格预设错误，尝试使用默认风格
+                        payload["style_preset"] = "photographic"
+                        return self._call_stability_api(endpoint, payload, headers)
+            elif response.status_code == 403:
+                error_data = response.json()
+                if "content_moderation" in error_data.get("name", ""):
+                    print(f"API调用失败，切换到模拟模式: 内容被审核系统拦截")
+                    # 尝试清理提示词后重试
+                    if "text_prompts" in payload:
+                        for prompt in payload["text_prompts"]:
+                            prompt["text"] = self._sanitize_prompt(prompt["text"], strict=True)
+                        return self._call_stability_api(endpoint, payload, headers)
+            
+            print(f"API调用失败，切换到模拟模式: API调用失败: {response.status_code} - {response.text}")
+            return None
+            
+        except Exception as e:
+            print(f"API调用失败，切换到模拟模式: {str(e)}")
+            return None
+            
+    def _sanitize_prompt(self, prompt, strict=False):
+        """
+        清理提示词，移除可能触发内容审核的内容
         
-        # 处理响应
-        if response.status_code == 200:
-            data = response.json()
-            if "artifacts" in data and len(data["artifacts"]) > 0:
-                # 获取生成的图像
-                image_data = base64.b64decode(data["artifacts"][0]["base64"])
-                
-                # 保存图像
-                timestamp = int(time.time())
-                output_path = os.path.join(GENERATED_IMAGES_DIR, f"gen_{timestamp}_{seed}.png")
-                
-                with open(output_path, "wb") as f:
-                    f.write(image_data)
-                    
-                return output_path
-            else:
-                raise ValueError("API响应格式异常")
-        else:
-            raise Exception(f"API调用失败: {response.status_code} - {response.text}")
+        参数:
+            prompt (str): 原始提示词
+            strict (bool): 是否使用严格模式
+            
+        返回:
+            str: 清理后的提示词
+        """
+        # 基础清理
+        cleaned = prompt.replace("血腥", "").replace("暴力", "").replace("恐怖", "")
+        
+        if strict:
+            # 严格模式下的额外清理
+            cleaned = cleaned.replace("裸", "").replace("性", "").replace("死", "")
+            cleaned = cleaned.replace("恐怖", "").replace("血", "").replace("暴力", "")
+            
+        return cleaned.strip()
     
     def _mock_generate_image(self, prompt, style, quality_params, seed):
         """
@@ -425,20 +522,357 @@ class ImageGenerator:
         colors = base_colors + detected_colors if detected_colors else base_colors
         return colors
     
-    def _simulate_translation(self, text):
+    def _translate_text(self, text, from_lang="zh", to_lang="en"):
         """
-        模拟中文到英文的翻译（实际应用中应调用翻译API）
+        使用通义千问API进行翻译
         
         参数:
-            text (str): 中文文本
+            text (str): 需要翻译的文本
+            from_lang (str): 源语言（未使用）
+            to_lang (str): 目标语言（未使用）
             
         返回:
-            str: 模拟的英文文本
+            str: 翻译后的文本
         """
-        # 简单模拟，实际应用应使用专业翻译API
         if not text:
             return ""
-        return f"[Translated: {text}]"
+            
+        if not self.dashscope_api_key:
+            print("警告: 未提供通义千问API密钥，将使用模拟翻译模式")
+            return f"[原文: {text}]"
+            
+        try:
+            # 构建翻译提示词
+            prompt = f"请将以下中文翻译成英文，只返回翻译结果，不要解释：\n{text}"
+            
+            # 准备API调用参数
+            payload = {
+                "model": "qwen-max",
+                "input": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                }
+            }
+            
+            # 设置请求头
+            headers = {
+                "Authorization": f"Bearer {self.dashscope_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # 发送请求
+            response = requests.post(
+                DASHSCOPE_API_BASE,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            # 检查响应状态
+            if response.status_code == 200:
+                result = response.json()
+                if "output" in result and "text" in result["output"]:
+                    return result["output"]["text"].strip()
+            
+            print(f"翻译API调用失败: {response.status_code} - {response.text}")
+            return f"[原文: {text}]"
+            
+        except Exception as e:
+            print(f"翻译过程中出错: {str(e)}")
+            return f"[原文: {text}]"
+
+    def _check_task_status(self, task_id):
+        """
+        检查RunningHub任务状态
+        
+        参数:
+            task_id (str): 任务ID
+            
+        返回:
+            str: 任务状态
+        """
+        try:
+            # 准备API调用参数
+            payload = {
+                "taskId": task_id,
+                "apiKey": self.runninghub_api_key
+            }
+            
+            # 设置请求头
+            headers = {
+                "Content-Type": "application/json",
+                "Host": "www.runninghub.cn"
+            }
+            
+            # 创建Session对象以自定义SSL验证
+            session = requests.Session()
+            session.verify = False  # 禁用SSL证书验证
+            
+            # 发送请求
+            response = session.post(
+                f"{RUNNINGHUB_API_BASE}/task/openapi/status",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 0:
+                    return result.get("data")
+            
+            return None
+            
+        except Exception as e:
+            print(f"检查任务状态失败: {str(e)}")
+            return None
+
+    def _get_task_outputs(self, task_id):
+        """
+        获取RunningHub任务输出
+        
+        参数:
+            task_id (str): 任务ID
+            
+        返回:
+            list: 输出文件列表，每个元素包含fileUrl和fileType
+        """
+        try:
+            # 准备API调用参数
+            payload = {
+                "taskId": task_id,
+                "apiKey": self.runninghub_api_key
+            }
+            
+            # 设置请求头
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
+                "Accept": "*/*",
+                "Host": "www.runninghub.cn",
+                "Connection": "keep-alive"
+            }
+            
+            # 创建Session对象以自定义SSL验证
+            session = requests.Session()
+            session.verify = False  # 禁用SSL证书验证
+            
+            # 发送请求
+            response = session.post(
+                f"{RUNNINGHUB_API_BASE}/task/openapi/outputs",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 0 and "data" in result:
+                    return result["data"]
+            
+            return None
+            
+        except Exception as e:
+            print(f"获取任务输出失败: {str(e)}")
+            return None
+
+    def _download_image(self, url, output_path):
+        """
+        下载图像文件
+        
+        参数:
+            url (str): 图像URL
+            output_path (str): 保存路径
+            
+        返回:
+            bool: 下载是否成功
+        """
+        try:
+            # 创建Session对象以自定义SSL验证
+            session = requests.Session()
+            session.verify = False  # 禁用SSL证书验证
+            
+            # 下载图像
+            response = session.get(url, timeout=30)
+            
+            if response.status_code == 200:
+                # 保存图像
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"下载图像失败: {str(e)}")
+            return False
+
+    def generate_image_runninghub(self, prompt, style=None, quality="标准", 
+                                negative_prompt=None, seed=None, use_mock=False):
+        """
+        使用RunningHub API生成图像
+        
+        参数:
+            prompt (str): 提示词
+            style (str, optional): 图像风格
+            quality (str): 图像质量
+            negative_prompt (str, optional): 负面提示词
+            seed (int, optional): 随机种子
+            use_mock (bool): 是否使用模拟模式
+            
+        返回:
+            str: 生成的图像文件路径
+        """
+        if not prompt:
+            prompt = "空白图像"
+            
+        # 如果使用模拟模式或未提供API密钥
+        if use_mock or not self.runninghub_api_key:
+            return self._mock_generate_image(prompt, style, IMAGE_QUALITY[quality], seed)
+            
+        try:
+            # 如果未提供种子，生成随机种子
+            if seed is None:
+                seed = random.randint(1, 1000000)
+                
+            # 准备API调用参数
+            payload = {
+                "workflowId": RUNNINGHUB_WORKFLOW_ID,
+                "apiKey": self.runninghub_api_key,
+                "nodeInfoList": [
+                    {
+                        "nodeId": "6",
+                        "fieldName": "text",
+                        "fieldValue": prompt
+                    },
+                    {
+                        "nodeId": "3",
+                        "fieldName": "seed",
+                        "fieldValue": seed
+                    }
+                ]
+            }
+            
+            # 设置请求头
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
+                "Accept": "*/*",
+                "Host": "www.runninghub.cn",
+                "Connection": "keep-alive"
+            }
+            
+            # 创建Session对象以自定义SSL验证
+            session = requests.Session()
+            session.verify = False  # 禁用SSL证书验证
+            
+            # 发送请求
+            print(f"发送请求到RunningHub API: {RUNNINGHUB_API_BASE}/task/openapi/create")
+            response = session.post(
+                f"{RUNNINGHUB_API_BASE}/task/openapi/create",
+                headers=headers,
+                json=payload,
+                timeout=60  # 增加超时时间
+            )
+            
+            # 打印响应状态码和响应内容以便调试
+            print(f"API响应状态码: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"API响应: {result}")
+                
+                if result.get("code") == 0 and "data" in result:
+                    task_data = result["data"]
+                    task_id = task_data.get("taskId")
+                    task_status = task_data.get("taskStatus")
+                    
+                    print(f"任务创建成功，任务ID: {task_id}, 状态: {task_status}")
+                    
+                    # 轮询任务状态
+                    max_retries = 30  # 最大重试次数
+                    retry_interval = 2  # 重试间隔（秒）
+                    
+                    for _ in range(max_retries):
+                        status = self._check_task_status(task_id)
+                        print(f"当前任务状态: {status}")
+                        
+                        if status == "SUCCESS":
+                            print("任务完成，准备获取图像")
+                            # 获取任务输出
+                            outputs = self._get_task_outputs(task_id)
+                            if outputs and len(outputs) > 0:
+                                # 获取第一个输出文件
+                                output = outputs[0]
+                                file_url = output.get("fileUrl")
+                                file_type = output.get("fileType", "png")
+                                
+                                if file_url:
+                                    # 准备保存路径
+                                    timestamp = int(time.time())
+                                    output_path = os.path.join(GENERATED_IMAGES_DIR, 
+                                                             f"rh_gen_{timestamp}_{seed}.{file_type}")
+                                    
+                                    # 下载图像
+                                    if self._download_image(file_url, output_path):
+                                        print(f"图像已保存到: {output_path}")
+                                        return output_path
+                            
+                            print("获取生成的图像失败")
+                            break
+                        elif status == "FAILED":
+                            print("任务失败")
+                            break
+                        elif status == "RUNNING":
+                            time.sleep(retry_interval)
+                            continue
+                        else:
+                            print(f"未知任务状态: {status}")
+                            break
+                    
+                    # 如果获取图像失败，返回模拟结果
+                    quality_params = IMAGE_QUALITY[quality]
+                    return self._mock_generate_image(prompt, style, quality_params, seed)
+                else:
+                    print(f"任务创建失败: {result.get('msg', '未知错误')}")
+            
+            print(f"RunningHub API调用失败: {response.status_code} - {response.text}")
+            return self._mock_generate_image(prompt, style, IMAGE_QUALITY[quality], seed)
+            
+        except Exception as e:
+            print(f"RunningHub API调用失败: {str(e)}")
+            return self._mock_generate_image(prompt, style, IMAGE_QUALITY[quality], seed)
+    
+    def generate_image(self, prompt, style=None, quality="标准", 
+                      negative_prompt=None, seed=None, use_mock=False, api="stability"):
+        """
+        生成图像的统一接口
+        
+        参数:
+            prompt (str): 提示词
+            style (str, optional): 图像风格
+            quality (str): 图像质量
+            negative_prompt (str, optional): 负面提示词
+            seed (int, optional): 随机种子
+            use_mock (bool): 是否使用模拟模式
+            api (str): 使用的API服务 ("stability" 或 "runninghub")
+            
+        返回:
+            str: 生成的图像文件路径
+        """
+        if api == "runninghub":
+            return self.generate_image_runninghub(
+                prompt, style, quality, negative_prompt, seed, use_mock
+            )
+        else:
+            # 使用原有的Stability API方法
+            return self.generate_from_text(
+                prompt, style, quality, negative_prompt, seed, use_mock
+            )
 
 # 预处理提示词
 def enhance_prompt(prompt, style=None, extra_details=None):
@@ -457,7 +891,7 @@ def enhance_prompt(prompt, style=None, extra_details=None):
     
     # 添加风格描述
     if style and style in IMAGE_STYLES:
-        enhanced += f"，{IMAGE_STYLES[style]}"
+        enhanced += f"，{IMAGE_STYLES[style]['name']}"
     
     # 添加额外细节
     if extra_details:
