@@ -246,6 +246,23 @@ def generate_image_runninghub(
                 # 获取 LoadImage 节点 ID
                 image_node_id = get_node_id_by_field(workflow_config, 'image')
                 if not image_node_id:
+                    # 检查工作流 ID 并设置特定默认值
+                    if workflow_id == "1899518843264389121":
+                        logger.warning("使用预设的图片节点ID: 40")
+                        image_node_id = "40"
+                    else:
+                        # 尝试从工作流原始配置中查找可能的图片节点
+                        logger.warning("尝试在原始配置中查找可能的图片节点")
+                        if isinstance(workflow_config, dict) and 'parameters' in workflow_config:
+                            node_info_list = workflow_config.get('parameters', {}).get('nodeInfoList', [])
+                            # 查找可能的图片节点
+                            for node in node_info_list:
+                                if isinstance(node, dict) and 'nodeId' in node:
+                                    image_node_id = str(node.get('nodeId'))
+                                    logger.warning(f"使用找到的第一个节点作为图片节点: {image_node_id}")
+                                    break
+                
+                if not image_node_id:
                     raise ValueError("未找到图片节点配置")
                 logger.debug(f"LoadImage 节点 ID: {image_node_id}")
                 
