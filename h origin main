@@ -1,0 +1,5 @@
+[33mcommit 23ebaf5855a50c434261cbde65b6b91f1fd1b0d8[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: drizzle72 <271578787@qq.com>
+Date:   Wed Mar 12 04:44:24 2025 +0800
+
+    修复：图生图模式下图片节点配置未找到的问题
